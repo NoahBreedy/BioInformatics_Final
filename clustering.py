@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 from itertools import product
@@ -10,6 +11,14 @@ from scipy.spatial.distance import pdist
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import seaborn as sns
+
+def create_dir(directory_name):
+    try:
+        os.mkdir(directory_name)
+    except FileExistsError:
+        return
+    except FileNotFoundError:
+        return
 
 
 # ─────────────────────────────────────────────────────────────
@@ -89,9 +98,9 @@ def build_feature_matrix(csv_path: str, k: int = 3) -> tuple:
 # 4. CLUSTERING
 # ─────────────────────────────────────────────────────────────
 
-def cluster_sequences(X: np.ndarray, labels: list,
+def cluster_sequences(X: np.ndarray, labels: list, k_value: int,
                       method: str = "hierarchical",
-                      n_clusters: int = 4) -> np.ndarray:
+                      n_clusters: int = 4,) -> np.ndarray:
     """
     Cluster the k-mer feature matrix.
 
@@ -121,7 +130,7 @@ def cluster_sequences(X: np.ndarray, labels: list,
         ax.set_title(f"Hierarchical clustering (Ward) — k={k_value}")
         ax.set_ylabel("Distance")
         plt.tight_layout()
-        plt.savefig("dendrogram.png", dpi=150)
+        plt.savefig(f"K{k_value}/k{k_value}_dendrogram.png", dpi=150)
         plt.show()
         print("Dendrogram saved to dendrogram.png")
 
@@ -146,7 +155,7 @@ def cluster_sequences(X: np.ndarray, labels: list,
 # 5. Plot the clusters
 # ─────────────────────────────────────────────────────────────
 
-def plot_clusters(X: np.ndarray, cluster_ids: np.ndarray, labels: list, title: str):
+def plot_clusters(X: np.ndarray, cluster_ids: np.ndarray, labels: list, title: str, k_value: int):
     """
     Reduces the high-dimensional k-mer matrix to 2D using PCA 
     and plots the clusters.
@@ -171,12 +180,12 @@ def plot_clusters(X: np.ndarray, cluster_ids: np.ndarray, labels: list, title: s
     plt.ylabel(f"PCA 2 ({pca.explained_variance_ratio_[1]:.1%} variance)")
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig("cluster_scatter_plot.png", dpi=150)
+    plt.savefig(f"K{k_value}/k{k_value}_cluster_scatter_plot.png", dpi=150)
     plt.show()
     print("Scatter plot saved to cluster_scatter_plot.png")
 
 
-def plot_by_class(X: np.ndarray, metadata_df: pd.DataFrame, title: str):
+def plot_by_class(X: np.ndarray, metadata_df: pd.DataFrame, title: str, k_value: int):
     """
     Plots the PCA-reduced data colored by biological Class.
     """
@@ -204,10 +213,10 @@ def plot_by_class(X: np.ndarray, metadata_df: pd.DataFrame, title: str):
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Biological Class")
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
-    plt.savefig("class_distribution_plot.png", dpi=150)
+    plt.savefig(f"K{k_value}/k{k_value}_class_distribution_plot.png", dpi=150)
     plt.show()
     
-def plot_by_protein_type(X: np.ndarray, metadata_df: pd.DataFrame, title: str):
+def plot_by_protein_type(X: np.ndarray, metadata_df: pd.DataFrame, title: str, k_value: int):
     # 1. Reduce dimensions
     pca = PCA(n_components=2)
     X_embedded = pca.fit_transform(X)
@@ -247,35 +256,44 @@ def plot_by_protein_type(X: np.ndarray, metadata_df: pd.DataFrame, title: str):
     plt.grid(True, linestyle='--', alpha=0.3)
     plt.tight_layout()
     
-    plt.savefig("protein_type_vibrant.png", dpi=150)
+    plt.savefig(f"K{k_value}/k{k_value}_protein_type_vibrant.png", dpi=150)
     plt.show()
 
 # ─────────────────────────────────────────────────────────────
 # 6. PUTTING IT ALL TOGETHER
 # ─────────────────────────────────────────────────────────────
 
-k_value = 3          # tri-peptide k-mers — good balance for proteins
-CSV     = "ucp_ml_dataset.csv"
 
-X, labels, df = build_feature_matrix(CSV, k=k_value)
+def run_program(k_value):
+    print(f"Creating plots for K{k_value}...")
+    create_dir(f"K{k_value}")
+    CSV     = "ucp_ml_dataset.csv"
 
-cluster_ids = cluster_sequences(
-    X, labels,
-    method="hierarchical",
-    n_clusters=4          # try adjusting this
-)
+    X, labels, df = build_feature_matrix(CSV, k=k_value)
 
-df["Cluster"] = cluster_ids
-# print("\nCluster assignments:")
-# print(df[["Organism", "Protein_Type", "Class", "Cluster"]]
-#        .sort_values("Cluster").to_string(index=False))
+    cluster_ids = cluster_sequences(
+        X, labels,
+        k_value= k_value,
+        method="hierarchical",
+        n_clusters=4          # try adjusting this
+    )
 
-df.to_csv("ucp_clustered.csv", index=False)
-print("\nSaved with cluster labels → ucp_clustered.csv")
+    df["Cluster"] = cluster_ids
+    # print("\nCluster assignments:")
+    # print(df[["Organism", "Protein_Type", "Class", "Cluster"]]
+    #        .sort_values("Cluster").to_string(index=False))
 
-# Call the plotting function
-plot_clusters(X, cluster_ids, labels, f"Protein Sequence Clusters (k={k_value})")
+    #df.to_csv("ucp_clustered.csv", index=False)
+    #print("\nSaved with cluster labels → ucp_clustered.csv")
 
-# plot_by_class(X, df, "K-mer Distribution by Biological Class")
+    # Call the plotting function
+    plot_clusters(X, cluster_ids, labels, f"Protein Sequence Clusters (k={k_value})", k_value)
 
-# plot_by_protein_type(X, df, "K-mer Analysis: Clustering by Protein Type")
+    plot_by_class(X, df, "K-mer Distribution by Biological Class", k_value)
+
+    plot_by_protein_type(X, df, "K-mer Analysis: Clustering by Protein Type", k_value)
+
+
+if __name__ == "__main__":
+    for i in range(2, 5):
+        run_program(i)
