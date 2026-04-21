@@ -8,6 +8,10 @@ from Bio import SeqIO
 from Bio.Cluster import kcluster      # BioPython's built-in k-means
 from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from scipy.spatial.distance import pdist
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import classification_report
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import seaborn as sns
@@ -152,7 +156,22 @@ def cluster_sequences(X: np.ndarray, labels: list, k_value: int,
     return cluster_ids
 
 # ─────────────────────────────────────────────────────────────
-# 5. Plot the clusters
+# 5. Classifier
+# ─────────────────────────────────────────────────────────────
+
+def classify(X: np.ndarray, metadata_df: pd.DataFrame, target_col: str):
+    le = LabelEncoder()
+    y = le.fit_transform(metadata_df[target_col].values)
+
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+    y_pred = cross_val_predict(clf, X, y, cv=cv)
+
+    print(f"\n10-Fold CV Classification Report — predicting {target_col}:")
+    print(classification_report(y_true=y, y_pred=y_pred, target_names=le.classes_))
+
+# ─────────────────────────────────────────────────────────────
+# 6. Plot the clusters
 # ─────────────────────────────────────────────────────────────
 
 def plot_clusters(X: np.ndarray, cluster_ids: np.ndarray, labels: list, title: str, k_value: int):
@@ -260,7 +279,7 @@ def plot_by_protein_type(X: np.ndarray, metadata_df: pd.DataFrame, title: str, k
     plt.show()
 
 # ─────────────────────────────────────────────────────────────
-# 6. PUTTING IT ALL TOGETHER
+# 7. PUTTING IT ALL TOGETHER
 # ─────────────────────────────────────────────────────────────
 
 
@@ -292,8 +311,13 @@ def run_program(k_value):
     plot_by_class(X, df, "K-mer Distribution by Biological Class", k_value)
 
     plot_by_protein_type(X, df, "K-mer Analysis: Clustering by Protein Type", k_value)
+    
+    classify(X, df, "Kingdom")
+    classify(X, df, "Class")
 
 
 if __name__ == "__main__":
-    for i in range(2, 5):
-        run_program(i)
+    # for i in range(2, 5):
+    #     run_program(i)
+    
+    run_program(3)
