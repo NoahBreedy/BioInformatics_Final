@@ -3,6 +3,11 @@ import re
 import time
 import requests
 import pandas as pd
+import numpy as np
+from itertools import combinations
+from scipy.spatial.distance import pdist, squareform
+from scipy.stats import pearsonr
+from sklearn.feature_extraction.text import CountVectorizer
 from Bio import Entrez, SeqIO
 from io import StringIO
 
@@ -280,6 +285,76 @@ UNIPROT_SUPPLEMENT = {
     # },
 }
 
+def build_kmer_matrix(df, k=3):
+    seqs = df["Sequence"].astype(str).tolist()
+
+    vect = CountVectorizer(
+        analyzer="char",
+        ngram_range=(k, k)
+    )
+
+    X = vect.fit_transform(seqs)
+    return X.toarray()
+
+def compute_kmer_distance(df, k=3):
+    X = build_kmer_matrix(df, k)
+    dist = squareform(pdist(X, metric="euclidean"))
+    return dist
+
+# ----------------------------------------------------------
+# 3. Build taxonomy distance matrix
+#
+# same class      = 0
+# same kingdom    = 1
+# different group = 2
+# ----------------------------------------------------------
+def compute_taxonomy_distance(df):
+    n = len(df)
+    tax = np.zeros((n, n))
+
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                tax[i, j] = 0
+            elif df.iloc[i]["Class"] == df.iloc[j]["Class"]:
+                tax[i, j] = 0
+            elif df.iloc[i]["Kingdom"] == df.iloc[j]["Kingdom"]:
+                tax[i, j] = 1
+            else:
+                tax[i, j] = 2
+
+    return tax
+
+
+def mantel_test(mat1, mat2, perms=999):
+    """
+    Simple Mantel test using Pearson correlation
+    """
+
+    # upper triangle only
+    idx = np.triu_indices_from(mat1, k=1)
+
+    x = mat1[idx]
+    y = mat2[idx]
+
+    obs_r, _ = pearsonr(x, y)
+
+    count = 0
+    n = mat1.shape[0]
+
+    for _ in range(perms):
+        perm = np.random.permutation(n)
+        permuted = mat2[perm][:, perm]
+        y_perm = permuted[idx]
+
+        r_perm, _ = pearsonr(x, y_perm)
+
+        if abs(r_perm) >= abs(obs_r):
+            count += 1
+
+    pval = (count + 1) / (perms + 1)
+
+    return obs_r, pval
 
 def main():
    
@@ -347,7 +422,22 @@ def main():
     print(f"\nTotal sequences after deduplication: {len(df)}")
     print("\nBreakdown by Kingdom / Class:")
     print(df.groupby(['Kingdom', 'Class']).size())
-            
+
+    print("\nRunning Mantel test...")
+
+    kmer_dist = compute_kmer_distance(df, k=3)
+    tax_dist  = compute_taxonomy_distance(df)
+
+    r, p = mantel_test(kmer_dist, tax_dist, perms=999)
+
+    print(f"Mantel correlation r = {r:.4f}")
+    print(f"P-value              = {p:.4f}")
+
+    if p < 0.05:
+        print("Significant result: k-mer composition tracks phylogeny.")
+    else:
+        print("No significant relationship detected.")
+
     return
 
 if __name__ == "__main__":
